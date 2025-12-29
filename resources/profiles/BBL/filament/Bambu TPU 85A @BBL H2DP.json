@@ -8,6 +8,12 @@
     "additional_cooling_fan_speed": [
         "100"
     ],
+    "eng_plate_temp": [
+        "35"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "35"
+    ],
     "filament_deretraction_speed": [
         "10",
         "10"
@@ -16,76 +22,24 @@
         "1",
         "1"
     ],
-    "filament_flush_temp": [
-        "0",
-        "0"
-    ],
-    "filament_flush_volumetric_speed": [
-        "0",
-        "0"
-    ],
-    "filament_long_retractions_when_cut": [
-        "nil",
-        "nil"
-    ],
     "filament_max_volumetric_speed": [
         "2.2",
         "2.2"
     ],
-    "filament_retract_before_wipe": [
-        "nil",
-        "nil"
+    "filament_ramming_volumetric_speed": [
+        "0.55",
+        "0.55"
     ],
-    "filament_retract_restart_extra": [
-        "nil",
-        "nil"
-    ],
-    "filament_retract_when_changing_layer": [
-        "nil",
-        "nil"
-    ],
-    "filament_retraction_distances_when_cut": [
-        "nil",
-        "nil"
+    "filament_printable": [
+        "2"
     ],
     "filament_retraction_length": [
         "2",
         "2"
     ],
-    "filament_retraction_minimum_travel": [
-        "nil",
-        "nil"
-    ],
     "filament_retraction_speed": [
         "10",
         "10"
-    ],
-    "filament_wipe": [
-        "nil",
-        "nil"
-    ],
-    "filament_wipe_distance": [
-        "nil",
-        "nil"
-    ],
-    "filament_z_hop": [
-        "nil",
-        "nil"
-    ],
-    "filament_z_hop_types": [
-        "nil",
-        "nil"
-    ],
-    "filament_extruder_variant": [
-        "Direct Drive Standard",
-        "Direct Drive High Flow"
-    ],
-    "filament_printable": [
-        "2"
-    ],
-    "filament_ramming_volumetric_speed": [
-        "0.55",
-        "0.55"
     ],
     "filament_pre_cooling_temperature": [
         "195",
@@ -98,9 +52,8 @@
     "impact_strength_z": [
         "88.7"
     ],
-    "long_retractions_when_ec": [
-        "1",
-        "1"
+    "include": [
+        "fdm_filament_template_direct_dual"
     ],
     "nozzle_temperature_range_high": [
         "250"

@@ -109,22 +109,17 @@ void CalibrationCaliPage::set_cali_img()
             CalibMode         obj_cali_mode = get_obj_calibration_mode(curr_obj, method, cali_stage);
             set_pa_cali_image(cali_stage);
         }
-        else if (m_cali_method == CalibrationMethod::CALI_METHOD_AUTO) {
+        else if (m_cali_method == CalibrationMethod::CALI_METHOD_AUTO || m_cali_method == CalibrationMethod::CALI_METHOD_NEW_AUTO) {
             if (curr_obj) {
+                std::string image_name = curr_obj->get_auto_pa_cali_thumbnail_img_str();
                 if (curr_obj->is_multi_extruders()) {
                     if (m_cur_extruder_id == 0) {
-                        m_picture_panel->set_bmp(ScalableBitmap(this, "fd_calibration_auto_multi_extruders_right", 400));
+                        image_name += "_right";
                     } else {
-                        assert(m_cur_extruder_id == 1);
-                        m_picture_panel->set_bmp(ScalableBitmap(this, "fd_calibration_auto_multi_extruders_left", 400));
+                        image_name += "_left";
                     }
                 }
-                else if (curr_obj->get_printer_arch() == PrinterArch::ARCH_I3) {
-                    m_picture_panel->set_bmp(ScalableBitmap(this, "fd_calibration_auto_i3", 400));
-                }
-                else {
-                    m_picture_panel->set_bmp(ScalableBitmap(this, "fd_calibration_auto", 400));
-                }
+                m_picture_panel->set_bmp(ScalableBitmap(this, image_name, 400));
             }
             else {
                 m_picture_panel->set_bmp(ScalableBitmap(this, "fd_calibration_auto", 400));
@@ -214,8 +209,8 @@ void CalibrationCaliPage::update(MachineObject* obj)
             return;
         }
 
-        if (m_cali_mode == CalibMode::Calib_PA_Line) {
-            if (m_cali_method == CalibrationMethod::CALI_METHOD_AUTO) {
+        if (m_cali_mode == CalibMode::Calib_PA_Line || m_cali_mode == CalibMode::Calib_Auto_PA_Line) {
+            if (m_cali_method == CalibrationMethod::CALI_METHOD_AUTO || m_cali_method == CalibrationMethod::CALI_METHOD_NEW_AUTO) {
                 if (get_obj_calibration_mode(obj) == m_cali_mode) {
                     if (obj->is_printing_finished()) {
                         if (obj->print_status == "FINISH") {
@@ -272,14 +267,13 @@ void CalibrationCaliPage::update(MachineObject* obj)
             } else if (m_cali_method == CalibrationMethod::CALI_METHOD_MANUAL) {
                 if (get_obj_calibration_mode(obj) == m_cali_mode && obj->is_printing_finished()) {
                     // use selected diameter, add a counter to timeout, add a warning tips when get result failed
-                    CalibUtils::emit_get_flow_ratio_calib_results(get_selected_calibration_nozzle_dia(obj));
                     enable_cali = true;
                 }
                 else {
                     enable_cali = false;
                 }
             } else {
-                assert(false);
+                //assert(false);
             }
             m_action_panel->enable_button(CaliPageActionType::CALI_ACTION_CALI_NEXT, enable_cali);
         }
@@ -480,7 +474,7 @@ void CalibrationCaliPage::set_cali_method(CalibrationMethod method)
     manual_steps.Add(_L("Calibration2"));
     manual_steps.Add(_L("Record Factor"));
 
-    if (method == CalibrationMethod::CALI_METHOD_AUTO) {
+    if (method == CalibrationMethod::CALI_METHOD_AUTO || method == CalibrationMethod::CALI_METHOD_NEW_AUTO) {
         m_step_panel->set_steps_string(auto_steps);
         m_step_panel->set_steps(1);
     }

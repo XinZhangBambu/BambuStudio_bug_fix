@@ -1020,7 +1020,7 @@ bool ImGuiWrapper::checkbox(const wxString &label, bool &value)
     return ImGui::Checkbox(label_utf8.c_str(), &value);
 }
 
-bool ImGuiWrapper::bbl_checkbox(const wxString &label, bool &value)
+bool ImGuiWrapper::bbl_checkbox(const wxString &label, bool &value, bool enabled, bool b_dark_mode)
 {
     bool result;
     bool b_value = value;
@@ -1029,10 +1029,25 @@ bool ImGuiWrapper::bbl_checkbox(const wxString &label, bool &value)
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.00f, 0.68f, 0.26f, 1.00f));
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.00f, 0.68f, 0.26f, 1.00f));
     }
+    if (!enabled) {
+        float factor = b_value ? 0.8f : 1.0f;
+        if (b_dark_mode) {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(factor * 39.0f / 255.0f, factor * 39.0f / 255.0f, factor * 39.0f / 255.0f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(factor * 108.0f / 255.0f, factor * 108.0f / 255.0f, factor * 108.0f / 255.0f, 1.0f));
+        }
+        else {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(factor * 230.0f / 255.0f, factor * 230.0f / 255.0f, factor * 230.0f / 255.0f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(factor * 163.0f / 255.0f, factor * 163.0f / 255.0f, factor * 163.0f / 255.0f, 1.0f));
+        }
+    }
     auto label_utf8 = into_u8(label);
     result          = ImGui::BBLCheckbox(label_utf8.c_str(), &value);
 
+    if (!enabled) {
+        ImGui::PopStyleColor(2);
+    }
     if (b_value) { ImGui::PopStyleColor(3);}
+
     return result;
 }
 
@@ -1109,6 +1124,17 @@ void ImGuiWrapper::warning_text_wrapped(const char *all_text, float wrap_width) 
 void ImGuiWrapper::warning_text_wrapped(const wxString &all_text, float wrap_width) {
     auto label_utf8 = into_u8(all_text);
     warning_text_wrapped(label_utf8.c_str(), wrap_width);
+}
+
+void ImGuiWrapper::error_text_wrapped(const char *text, float wrap_width) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGuiWrapper::to_ImVec4(ColorRGB::ERROR_COLOR()));
+    this->text_wrapped(text, wrap_width);
+    ImGui::PopStyleColor();
+}
+
+void ImGuiWrapper::error_text_wrapped(const wxString &text, float wrap_width) {
+    auto label_utf8 = into_u8(text);
+    error_text_wrapped(label_utf8.c_str(), wrap_width);
 }
 
 void ImGuiWrapper::text_wrapped(const char *label, float wrap_width)

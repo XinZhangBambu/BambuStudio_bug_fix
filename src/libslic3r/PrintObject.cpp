@@ -315,6 +315,61 @@ std::vector<std::set<int>> PrintObject::detect_extruder_geometric_unprintables()
     return geometric_unprintables;
 }
 
+
+
+std::unordered_map<int, std::unordered_map<int,double>>  PrintObject::calc_estimated_filament_print_time() const
+{
+    auto get_limit_from_volumetric_speed = [&](int filament_idx, int extruder_idx, double width, double height) {
+        double max_volumetric_speed = print()->config().filament_max_volumetric_speed.values[filament_idx];
+        double flow_ratio = print()->config().filament_flow_ratio.values[filament_idx];
+
+        double mm3_per_mm = height * (width - height * (1 - PI / 4)) * flow_ratio;
+        return max_volumetric_speed / mm3_per_mm;
+        };
+
+    std::unordered_map<int, std::unordered_map<int,double>> filament_print_time;
+    // Iterate through all layers and regions to calculate the print area for each filament.
+    int extruder_num = this->print()->config().nozzle_diameter.size();
+    for (size_t idx = 0; idx < m_layers.size(); ++idx) {
+        auto layer = m_layers[idx];
+
+        for (auto layerm : layer->regions()) {
+            const auto& region = layerm->region();
+            double sparse_width = region.config().sparse_infill_line_width;
+            double solid_width = region.config().internal_solid_infill_line_width;
+            double wall_width = (region.config().outer_wall_line_width + region.config().inner_wall_line_width) / 2.f;
+
+            int wall_filament = region.config().wall_filament - 1;
+            int solid_infill_filament = region.config().solid_infill_filament - 1;
+            int sparse_infill_filament = region.config().sparse_infill_filament - 1;
+
+            auto sparse_infill_surfaces = layerm->fill_surfaces.filter_by_type(stInternal);
+            double sparse_area = unscale_(unscale_(std::accumulate(sparse_infill_surfaces.begin(), sparse_infill_surfaces.end(), 0.0,
+                [](double val, const Surface* surface) { return val + surface->area(); })));
+            double full_area = unscale_(unscale_(get_expolygons_area(layerm->raw_slices)));
+            double infill_area = unscale_(unscale_(get_expolygons_area(layerm->fill_expolygons)));
+            double solid_area = infill_area - sparse_area;
+            double wall_area = full_area - infill_area;
+            sparse_area *= region.config().sparse_infill_density.value / 100.0;
+
+            for (int eidx = 0; eidx < extruder_num; ++eidx) {
+                double sparse_speed = std::min(region.config().sparse_infill_speed.values[eidx], get_limit_from_volumetric_speed(sparse_infill_filament, eidx, sparse_width, layer->height));
+                double solid_speed = std::min(region.config().internal_solid_infill_speed.values[eidx], get_limit_from_volumetric_speed(solid_infill_filament, eidx, solid_width, layer->height));
+                double wall_speed = std::min((region.config().inner_wall_speed.values[eidx] + region.config().outer_wall_speed.values[eidx]) / 2.0, get_limit_from_volumetric_speed(wall_filament, eidx, wall_width, layer->height));
+
+                double sparse_time = sparse_area / (sparse_speed * sparse_width);
+                double solid_time = solid_area / (solid_speed * solid_width);
+                double wall_time = wall_area / (wall_speed * wall_width);
+
+                filament_print_time[solid_infill_filament][eidx] += solid_time;
+                filament_print_time[sparse_infill_filament][eidx] += sparse_time;
+                filament_print_time[wall_filament][eidx] += wall_time;
+            }
+        }
+    }
+    return filament_print_time;
+}
+
 // 1) Merges typed region slices into stInternal type.
 // 2) Increases an "extra perimeters" counter at region slices where needed.
 // 3) Generates perimeters, gap fills and fill regions (fill regions of type stInternal).
@@ -336,6 +391,10 @@ void PrintObject::make_perimeters()
             m_print->throw_if_canceled();
         }
         m_typed_slices = false;
+    }
+    if (this->config().enable_circle_compensation) { // we need the circle_compensation information
+        for (Layer *layer : m_layers) layer->apply_auto_circle_compensation();
+        m_typed_slices = true;
     }
 
     // compare each layer to the one below, and mark those slices needing
@@ -508,7 +567,8 @@ void PrintObject::prepare_infill()
     // Then the classifcation of $layerm->slices is transfered onto
     // the $layerm->fill_surfaces by clipping $layerm->fill_surfaces
     // by the cummulative area of the previous $layerm->fill_surfaces.
-    this->detect_surfaces_type();
+    std::vector<std::vector<SurfaceCollection>> slice_surfaces_cpy;
+    this->detect_surfaces_type(slice_surfaces_cpy);
     m_print->throw_if_canceled();
 
     // Also tiny stInternal surfaces are turned to stInternalSolid.
@@ -569,7 +629,7 @@ void PrintObject::prepare_infill()
 
     if (m_config.interlocking_beam.value)
         discover_shell_for_perimeters();
-
+    reset_slice_surfaces(slice_surfaces_cpy);
     // Only active if config->infill_only_where_needed. This step trims the sparse infill,
     // so it acts as an internal support. It maintains all other infill types intact.
     // Here the internal surfaces and perimeters have to be supported by the sparse infill.
@@ -633,7 +693,7 @@ void PrintObject::infill()
                for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx) {
                    m_print->throw_if_canceled();
                    m_layers[layer_idx]->make_fills(adaptive_fill_octree.get(), support_fill_octree.get(), this->m_lightning_generator.get());
-               }
+                }
            }
         );
         m_print->throw_if_canceled();
@@ -1071,7 +1131,8 @@ bool PrintObject::invalidate_state_by_config_options(
                opt_key == "bottom_shell_layers"
             || opt_key == "top_shell_layers"
             || opt_key == "top_color_penetration_layers"
-            || opt_key == "bottom_color_penetration_layers") {
+            || opt_key == "bottom_color_penetration_layers"
+            || opt_key == "infill_instead_top_bottom_surfaces") {
 
             steps.emplace_back(posSlice);
 #if (0)
@@ -1093,6 +1154,7 @@ bool PrintObject::invalidate_state_by_config_options(
 #endif
         } else if (
                opt_key == "interface_shells"
+            || opt_key == "fill_multiline"
             || opt_key == "infill_combination"
             || opt_key == "bottom_shell_thickness"
             || opt_key == "top_shell_thickness"
@@ -1272,6 +1334,23 @@ bool PrintObject::invalidate_all_steps()
 	return result;
 }
 
+void PrintObject::reset_slice_surfaces(const std::vector<std::vector<SurfaceCollection>> &slice_surfaces_cpy){
+    //reset infill surface and slice data back
+    for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id) {
+        for (size_t idx_layer = 0; idx_layer < m_layers.size(); ++ idx_layer) {
+
+            Layer       *layer  = m_layers[idx_layer];
+            LayerRegion *layerm = layer->m_regions[region_id];
+            if (layerm->region().config().infill_instead_top_bottom_surfaces && layerm->region().config().sparse_infill_pattern == ipLockedZag) {
+                layerm->slices = slice_surfaces_cpy[idx_layer][region_id];
+                ExPolygons exps;
+                layerm->fill_surfaces.keep_type(SurfaceType::stInternal, exps);
+                layerm->fill_surfaces.append(exps, SurfaceType::stTop);
+            }
+        }
+    }
+}
+
 // This function analyzes slices of a region (SurfaceCollection slices).
 // Each region slice (instance of Surface) is analyzed, whether it is supported or whether it is the top surface.
 // Initially all slices are of type stInternal.
@@ -1281,7 +1360,7 @@ bool PrintObject::invalidate_all_steps()
 // stBottom       - Part of a region, which is not supported by the same region, but it is supported either by another region, or by a soluble interface layer.
 // stInternal     - Part of a region, which is supported by the same region type.
 // If a part of a region is of stBottom and stTop, the stBottom wins.
-void PrintObject::detect_surfaces_type()
+void PrintObject::detect_surfaces_type(std::vector<std::vector<SurfaceCollection>> &slice_surfaces_cpy)
 {
     BOOST_LOG_TRIVIAL(info) << "Detecting solid surfaces..." << log_memory_info();
 
@@ -1307,6 +1386,7 @@ void PrintObject::detect_surfaces_type()
         if (interface_shells)
             surfaces_new.assign(num_layers, Surfaces());
 
+        slice_surfaces_cpy.resize(m_layers.size());
         // interface_shell 启用与否，决定着是否区分不同材料。开启后，不同材料间的接触面都会被识别为顶面、底面
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0,
@@ -1315,7 +1395,7 @@ void PrintObject::detect_surfaces_type()
             		((num_layers > 1) ? num_layers - 1 : num_layers) :
             		// In non-spiral vase mode, go over all layers.
             		m_layers.size()),
-            [this, spiral_mode, region_id, interface_shells, &surfaces_new](const tbb::blocked_range<size_t>& range) {
+                [this, spiral_mode, region_id, interface_shells, &surfaces_new, &slice_surfaces_cpy](const tbb::blocked_range<size_t> &range) {
                 // BBS coconut: can't set to stBottom when soluable support is used, as the support may not be actaully generated, e.g. when "on build plate only" option is enabled. See github #3507.
                 SurfaceType surface_type_bottom_other = stBottomBridge;
                 for (size_t idx_layer = range.begin(); idx_layer < range.end(); ++ idx_layer) {
@@ -1323,6 +1403,12 @@ void PrintObject::detect_surfaces_type()
                     // BOOST_LOG_TRIVIAL(trace) << "Detecting solid surfaces for region " << region_id << " and layer " << layer->print_z;
                     Layer       *layer  = m_layers[idx_layer];
                     LayerRegion *layerm = layer->m_regions[region_id];
+                    slice_surfaces_cpy[idx_layer].resize(layer->m_regions.size());
+                    //record surface data
+                    if (layerm->region().config().infill_instead_top_bottom_surfaces && layerm->region().config().sparse_infill_pattern == ipLockedZag) {
+                        // layerm->fill_surfaces_copy = layerm->fill_expolygons;
+                        slice_surfaces_cpy[idx_layer][region_id] = layerm->slices;
+                    }
                     // comparison happens against the *full* slices (considering all regions)
                     // unless internal shells are requested
                     Layer       *upper_layer = (idx_layer + 1 < this->layer_count()) ? m_layers[idx_layer + 1] : nullptr;
@@ -2848,7 +2934,16 @@ void PrintObject::bridge_over_infill()
 
 static void clamp_exturder_to_default(ConfigOptionInt &opt, size_t num_extruders)
 {
-    if (opt.value > (int)num_extruders)
+    if (opt.value > (int) num_extruders)
+        // assign the default extruder
+        opt.value = 1;
+}
+static void clamp_exturder_to_default_protect0(ConfigOptionInt &opt, size_t num_extruders)
+{
+    if (opt.value > (int) num_extruders)
+        // assign the default extruder
+        opt.value = 1;
+    else if (opt.value < 1)
         // assign the default extruder
         opt.value = 1;
 }
@@ -2887,9 +2982,10 @@ static void apply_to_print_region_config(PrintRegionConfig &out, const DynamicPr
             if (ConfigOption* my_opt = out.option(it->first, false); my_opt != nullptr) {
                 if (one_of(it->first, keys_extruders)) {
                     // Ignore "default" extruders.
-                    int extruder = static_cast<const ConfigOptionInt*>(it->second.get())->value;
-                    if (extruder > 0)
-                        my_opt->setInt(extruder);
+                    // BBS: 2025-10-20 skip these filament settings, they will be processed out of this func
+                    //int extruder = static_cast<const ConfigOptionInt*>(it->second.get())->value;
+                    //if (extruder > 0)
+                    //    my_opt->setInt(extruder);
                 } else {
                     if (*my_opt != *(it->second)) {
                         if (my_opt->is_scalar() || variant_index.empty() || (print_options_with_variant.find(it->first) == print_options_with_variant.end()))
@@ -2923,10 +3019,38 @@ PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &defau
         assert(volume.is_model_part());
         apply_to_print_region_config(config, *layer_range_config, variant_index);
     }
+
+    {//over write the seprate filament for features config
+        auto resolve_filament_value = [&](const std::string &key, int default_or_parent, int previous_value) -> int {
+            int   filament_value_temp = 0;
+            auto *opt_vol             = volume.config.get().opt<ConfigOptionInt>(key);
+            auto *opt_obj             = volume.get_object()->config.get().opt<ConfigOptionInt>(key);
+            if (opt_vol) // deside use which value
+                filament_value_temp = opt_vol->value;
+            else if (opt_obj)
+                filament_value_temp = opt_obj->value;
+
+            if (layer_range_config != nullptr && volume.is_model_part()) {
+                auto *opt = layer_range_config->opt<ConfigOptionInt>(key);
+                if (opt) filament_value_temp = opt->value;
+            }
+
+            if (filament_value_temp > 0)
+                return filament_value_temp;
+            else
+                return previous_value;
+        };
+        config.wall_filament.value          = resolve_filament_value("wall_filament", default_or_parent_region_config.wall_filament.value, config.wall_filament.value);
+        config.sparse_infill_filament.value = resolve_filament_value("sparse_infill_filament", default_or_parent_region_config.sparse_infill_filament.value,
+                                                                     config.sparse_infill_filament.value);
+        config.solid_infill_filament.value  = resolve_filament_value("solid_infill_filament", default_or_parent_region_config.solid_infill_filament.value,
+                                                                     config.solid_infill_filament.value);
+    }
+
     // Clamp invalid extruders to the default extruder (with index 1).
-    clamp_exturder_to_default(config.sparse_infill_filament,       num_extruders);
-    clamp_exturder_to_default(config.wall_filament,    num_extruders);
-    clamp_exturder_to_default(config.solid_infill_filament, num_extruders);
+    clamp_exturder_to_default_protect0(config.sparse_infill_filament, num_extruders);
+    clamp_exturder_to_default_protect0(config.wall_filament, num_extruders);
+    clamp_exturder_to_default_protect0(config.solid_infill_filament, num_extruders);
     if (config.sparse_infill_density.value < 0.00011f)
         // Switch of infill for very low infill rates, also avoid division by zero in infill generator for these very low rates.
         // See GH issue #5910.
@@ -3044,7 +3168,9 @@ bool PrintObject::update_layer_height_profile(const ModelObject &model_object, c
             std::abs(layer_height_profile[layer_height_profile.size() - 2] - slicing_parameters.object_print_z_max + slicing_parameters.object_print_z_min) > 1e-3))
         layer_height_profile.clear();
 
-    if (layer_height_profile.empty() || layer_height_profile[1] != slicing_parameters.first_object_layer_height) {
+    bool not_match_flag = !slicing_parameters.has_raft(); // if there is raft layer_height_profile[1] could also be adaptive
+    not_match_flag &= !layer_height_profile.empty() && (layer_height_profile[1] != slicing_parameters.first_object_layer_height);
+    if (layer_height_profile.empty() || not_match_flag) {
         //layer_height_profile = layer_height_profile_adaptive(slicing_parameters, model_object.layer_config_ranges, model_object.volumes);
         layer_height_profile = layer_height_profile_from_ranges(slicing_parameters, model_object.layer_config_ranges);
         updated = true;

@@ -8,6 +8,7 @@
 #include "../Utils/Http.hpp"
 
 #include <regex>
+#include <utility>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -55,12 +56,14 @@ WebViewPanel::WebViewPanel(wxWindow *parent)
 
     wxString UrlLeft  = wxString::Format("file://%s/web/homepage3/left.html", from_u8(resources_dir()));
     wxString UrlRight = wxString::Format("file://%s/web/homepage3/home.html", from_u8(resources_dir()));
+    wxString UrlWiki   = wxString::Format("file://%s/web/homepage3/wiki.html", from_u8(resources_dir()));
 
     wxString strlang = GetStudioLanguage();
     if (strlang != "")
     {
         UrlLeft = wxString::Format("file://%s/web/homepage3/left.html?lang=%s", from_u8(resources_dir()), strlang);
         UrlRight = wxString::Format("file://%s/web/homepage3/home.html?lang=%s", from_u8(resources_dir()), strlang);
+        UrlWiki = wxString::Format("file://%s/web/homepage3/wiki.html?lang=%s", from_u8(resources_dir()), strlang);
     }
 
     topsizer = new wxBoxSizer(wxVERTICAL);
@@ -156,12 +159,22 @@ WebViewPanel::WebViewPanel(wxWindow *parent)
     SetMakerlabUrl("");
     m_MakerLabFirst = false;
 
+    // Wiki webview
+    m_browserWiki = WebView::CreateWebView(this, UrlWiki);
+    if (m_browserWiki == nullptr) {
+        wxLogError("Could not init  m_browserWiki");
+        return;
+    }
+    m_browserWiki->Hide();
+    m_WikiFirst = false;
+
     // Position
     m_home_web->Add(m_browserLeft, 0, wxEXPAND | wxALL, 0);
     m_home_web->Add(m_browser, 1, wxEXPAND | wxALL, 0);
     m_home_web->Add(m_browserMW, 1, wxEXPAND | wxALL, 0);
     m_home_web->Add(m_browserPH, 1, wxEXPAND | wxALL, 0);
     m_home_web->Add(m_browserML, 1, wxEXPAND | wxALL, 0);
+    m_home_web->Add(m_browserWiki, 1, wxEXPAND | wxALL, 0);
 
     topsizer->Add(m_home_web,1, wxEXPAND | wxALL, 0);
 
@@ -704,6 +717,88 @@ void WebViewPanel::SendDesignStaffpick(bool on)
     m_has_pending_staff_pick = false;
 }
 
+void WebViewPanel::get_wiki_search_result(std::string keyword)
+{
+    if (keyword.empty()) {
+        return;
+    }
+
+    std::string url = "https://wiki.bambulab.com/graphql";
+    Slic3r::Http http = Slic3r::Http::post(url);
+
+    auto esc = [](std::string s) {
+        std::string o; o.reserve(s.size());
+        for (char c : s) {
+            switch (c) {
+            case '\\': o += "\\\\"; break;
+            case '\"': o += "\\\""; break;
+            case '\n': o += "\\n";  break;
+            case '\r': o += "\\r";  break;
+            case '\t': o += "\\t";  break;
+            default:   o += c;      break;
+            }
+        }
+        return o;
+    };
+
+    std::string json_body = (boost::format(
+    R"JSON({"operationName":null,"variables":{"query":"%1%"},"extensions":{},"query":"query ($query: String!) { pages { search(query: $query) { results { id title description path locale } totalHits } } }"})JSON"
+) % esc(keyword)).str();
+
+    http.header("Content-Type", "application/json");
+    http.set_post_body(json_body);
+    http.on_complete([this](std::string body, unsigned status) {
+        CallAfter([this, body]() {
+            json j = json::parse(body);
+            if (j.contains("data")) {
+                auto body2 = from_u8(body);
+                body2.insert(1, "\"command\": \"search_wiki_get\", ");
+                WebView::RunScript(m_browserWiki, wxString::Format("HandleStudio(%s)", body2));
+                return;
+            }
+        });
+    }).on_error([this](std::string body, std::string error, unsigned int status) {
+            BOOST_LOG_TRIVIAL(error) << "get wiki search result error" << body;
+    }).perform();
+}
+
+void WebViewPanel::get_academy_list(bool is_oversea)
+{
+    std::string url = "https://bambulab.cn/api/v1/hub-service/academy/client/course/printerList";
+    if(is_oversea) {
+        url = "https://bambulab.com/api/v1/hub-service/academy/client/course/printerList";
+    }
+    Http http = Http::get(url);
+    http.header("accept", "application/json")
+        .header("Content-Type", "application/json")
+        .on_complete([this](std::string body, unsigned status) {
+            if (status != 200) {
+                BOOST_LOG_TRIVIAL(error) << "get academy list failed, status: " << status;
+                return;
+            }
+            CallAfter([this, body = std::move(body)] {
+                if (!m_browserWiki) return;
+                try {
+                    json resp = json::parse(body);
+                    if (!resp.contains("data")) {
+                        BOOST_LOG_TRIVIAL(warning) << "academy list response missing data";
+                        return;
+                    }
+                    resp["command"] = "academy_list_get";
+                    auto payload = from_u8(resp.dump(-1, ' ', true));
+                    WebView::RunScript(m_browserWiki, wxString::Format("HandleStudio(%s)", payload));
+                } catch (const std::exception &e) {
+                    BOOST_LOG_TRIVIAL(error) << "parse academy list failed: " << e.what();
+                }
+            });
+        })
+        .on_error([](std::string body, std::string error, unsigned status) {
+            BOOST_LOG_TRIVIAL(error) << "get academy list error, status: " << status
+                                     << ", err: " << error << ", body: " << body;
+        })
+        .perform();
+}
+
 void WebViewPanel::SendMakerlabList(  )
 {
     try {
@@ -1173,14 +1268,15 @@ void WebViewPanel::ShowUserPrintTask(bool bShow, bool bForce)
         if (m_contentname == "printhistory") SwitchLeftMenu("home");
 
         //refresh url
-        auto host = wxGetApp().get_model_http_url(wxGetApp().app_config->get_country_code());
+        // auto host = wxGetApp().get_model_http_url(wxGetApp().app_config->get_country_code());
 
-        wxString language_code = wxString::FromUTF8(GetStudioLanguage()).BeforeFirst('_');
+        //wxString language_code = wxString::FromUTF8(GetStudioLanguage()).BeforeFirst('_');
 
-        wxString mw_OffUrl = (boost::format("%1%%2%/studio/print-history?from=bambustudio") % host % language_code.mb_str()).str();
-        wxString Finalurl  = wxString::Format("%sapi/sign-out?to=%s", host, UrlEncode("about:blank"));
+        //wxString mw_OffUrl = (boost::format("%1%%2%/studio/print-history?from=bambustudio") % host % language_code.mb_str()).str();
+        //wxString Finalurl  = wxString::Format("%sapi/sign-out?to=%s", host, UrlEncode("about:blank"));
 
-        m_browserPH->LoadURL(Finalurl);
+        // m_browserPH->LoadURL(Finalurl);
+
         SetPrintHistoryTaskID(0);
         m_TaskInfo = "";
 
@@ -1279,6 +1375,19 @@ void WebViewPanel::OnNavigationComplete(wxWebViewEvent& evt)
             SetWebviewShow("right", false);
             SetWebviewShow("online", true);
         }
+
+        // search page jump to online page
+        if (m_online_last_url.find("/studio/webview/search") != std::string::npos) {
+            if ((TmpNowUrl.find("/studio/webview") != std::string::npos) &&
+                (TmpNowUrl.find("/studio/webview/search") == std::string::npos)) {
+                SwitchLeftMenu("online");
+            }
+        }
+        // jump to search page
+        if (TmpNowUrl.find("/studio/webview/search") != std::string::npos ) {
+            SwitchLeftMenu("search");
+        }
+        m_online_last_url = TmpNowUrl;
     }
 
     if (m_browser != nullptr && evt.GetId() == m_browser->GetId())
@@ -1683,9 +1792,9 @@ void WebViewPanel::OpenMakerworldSearchPage(std::string KeyWord)
 
     wxString language_code = wxString::FromUTF8(GetStudioLanguage()).BeforeFirst('_');
 
-    m_online_LastUrl = (boost::format("%1%%2%/studio/webview/search?keyword=%3%&from=bambustudio") % host % language_code.mb_str() % UrlEncode(KeyWord)).str();
-
-    SwitchLeftMenu("online");
+    m_online_LastUrl = (boost::format("%1%%2%/studio/webview/search?from=bambustudio&keyword=%3%&from_studio_home=true") % host % language_code.mb_str() % UrlEncode(KeyWord)).str();
+    SwitchWebContent("online");
+    //SwitchLeftMenu("online");
 }
 
 void WebViewPanel::SetMakerworldModelID(std::string ModelID)
@@ -1750,6 +1859,7 @@ void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
         SetWebviewShow("online", false);
         SetWebviewShow("right", false);
         SetWebviewShow("printhistory", false);
+        SetWebviewShow("wiki", false);
 
         // conf save
         wxGetApp().app_config->set_str("homepage", "makerlab_clicked", "1");
@@ -1768,10 +1878,22 @@ void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
         } else {
             if (m_online_LastUrl != "") {
                 m_browserMW->LoadURL(m_online_LastUrl);
-
+                BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << ": LoadURL " << m_online_LastUrl.ToStdString();
                 m_online_LastUrl = "";
             } else {
-                //m_browserMW->Reload();
+                std::string TmpNowUrl = m_browserMW->GetCurrentURL().ToStdString();
+                // If you click Online on the search page, navigate back to the Online page.
+                if (auto pos = TmpNowUrl.find("/search"); pos != std::string::npos){
+                    TmpNowUrl.erase(pos, 7);
+                }
+                if (auto pos = TmpNowUrl.find("&from_studio_home=true"); pos != std::string::npos) {
+                    TmpNowUrl.erase(pos, 22);
+                }
+                std::regex pattern("&keyword=[^&]*");
+                TmpNowUrl = std::regex_replace(TmpNowUrl, pattern, "");
+                if(TmpNowUrl != m_browserMW->GetCurrentURL().ToStdString()) {
+                    m_browserMW->LoadURL(TmpNowUrl); 
+                }
             }
         }
 
@@ -1779,7 +1901,7 @@ void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
         SetWebviewShow("makerlab", false);
         SetWebviewShow("right", false);
         SetWebviewShow("printhistory", false);
-
+        SetWebviewShow("wiki", false);
         // conf save
         wxGetApp().app_config->set_str("homepage", "online_clicked", "1");
         wxGetApp().app_config->save();
@@ -1820,8 +1942,25 @@ void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
         SetWebviewShow("right", false);
         SetWebviewShow("printhistory", true);
         SetWebviewShow("makerlab", false);
+        SetWebviewShow("wiki", false);
 
-    } else if (modelname.compare("home") == 0 || modelname.compare("recent") == 0 || modelname.compare("manual") == 0) {
+    } else if (modelname.compare("manual") == 0){
+        auto host = wxGetApp().get_model_http_url(wxGetApp().app_config->get_country_code());
+
+        wxString language_code = wxString::FromUTF8(GetStudioLanguage()).BeforeFirst('_');
+
+        // wxString wikiUrl = (boost::format("%1%%2%/studio/wiki?from=bambustudio") % host % language_code.mb_str()).str();
+
+        // if (m_browserWiki != nullptr)
+        //     m_browserWiki->LoadURL(wikiUrl);
+
+        SetWebviewShow("wiki", true);
+        SetWebviewShow("online", false);
+        SetWebviewShow("right", false);
+        SetWebviewShow("printhistory", false);
+        SetWebviewShow("makerlab", false);
+
+    } else if (modelname.compare("home") == 0 || modelname.compare("recent") == 0 ) {
         if (!m_browser) return;
 
         json m_Res           = json::object();
@@ -1838,6 +1977,7 @@ void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
         SetWebviewShow("printhistory", false);
         SetWebviewShow("right", true);
         SetWebviewShow("makerlab", false);
+        SetWebviewShow("wiki", false);
     }
 
     GetSizer()->Layout();
@@ -1928,6 +2068,8 @@ void WebViewPanel::SetWebviewShow(wxString name, bool show)
         TmpWeb = m_browserPH;
     else if (name == "makerlab")
         TmpWeb = m_browserML;
+    else if (name == "wiki")
+        TmpWeb = m_browserWiki;
 
     if (TmpWeb != nullptr)
     {

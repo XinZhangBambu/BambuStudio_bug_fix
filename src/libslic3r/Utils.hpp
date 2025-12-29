@@ -70,6 +70,8 @@
 #define CLI_GCODE_PATH_CONFLICTS           -101
 #define CLI_GCODE_PATH_IN_UNPRINTABLE_AREA -102
 #define CLI_FILAMENT_UNPRINTABLE_ON_FIRST_LAYER -103
+#define CLI_GCODE_PATH_OUTSIDE             -104
+#define CLI_GCODE_IN_WRAPPING_DETECT_AREA  -105
 
 
 namespace boost { namespace filesystem { class directory_entry; }}
@@ -97,6 +99,8 @@ void set_var_dir(const std::string &path);
 const std::string& var_dir();
 // Return a full resource path for a file_name.
 std::string var(const std::string &file_name);
+
+std::string format_diameter_to_str(double diameter, int precision = 1);
 
 // Set a path with various static definition data (for example the initial config bundles).
 void set_resources_dir(const std::string &path);
@@ -232,7 +236,7 @@ private:
         } else {
             return file_name(raw);
         }
-        
+
         if (id_start_pos != std::string::npos && id_start_pos < sanitized.length() && (sanitized[id_start_pos - 1] == '\\' || sanitized[id_start_pos - 1] == '/') &&
             std::isdigit(sanitized[id_start_pos])) {
             // If the ID part is present, sanitize it as well
@@ -255,7 +259,7 @@ private:
         if (raw.length() < full.length() || raw.empty()) {
             return std::move(file_name(raw));
         }
-        
+
         if (raw[0] != full[0] || raw[full.length() - 1] != full[full.length() - 1]) {
             if (std::isupper(raw[start_pos]) && std::tolower(raw[start_pos]) == full[start_pos]) {
                 raw.replace(start_pos, 12, std::string(12, '*'));
@@ -764,15 +768,15 @@ inline std::string get_bbl_monitor_time_dhm(float time_in_secs)
     time_in_secs -= (float)days * 86400.0f;
     int hours = (int)(time_in_secs / 3600.0f);
     time_in_secs -= (float)hours * 3600.0f;
-    int minutes = (int)(time_in_secs / 60.0f);
+    int minutes = (int) std::ceil(time_in_secs / 60.0f);
 
     char buffer[64];
     if (days > 0)
-        ::sprintf(buffer, "%dd%dh%dm", days, hours, minutes);
+        ::sprintf(buffer, "%dd%dh%dmin", days, hours, minutes);
     else if (hours > 0)
-        ::sprintf(buffer, "%dh%dm", hours, minutes);
+        ::sprintf(buffer, "%dh%dmin", hours, minutes);
     else if (minutes >= 0)
-        ::sprintf(buffer, "%dm", minutes);
+        ::sprintf(buffer, "%dmin", minutes);
     else {
         return "";
     }
@@ -825,7 +829,7 @@ inline std::string get_bbl_remain_time_dhms(float time_in_secs)
     time_in_secs -= (float) days * 86400.0f;
     int hours = (int) (time_in_secs / 3600.0f);
     time_in_secs -= (float) hours * 3600.0f;
-    int minutes = (int) (time_in_secs / 60.0f);
+    int minutes = (int) std::ceil(time_in_secs / 60.0f);
     time_in_secs -= (float) minutes * 60.0f;
 
     char buffer[64];

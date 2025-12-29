@@ -357,7 +357,7 @@ FanControlNew::FanControlNew(wxWindow *parent, const AirDuctData &fan_data, int 
 
     m_static_name = new wxStaticText(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxALIGN_CENTER_HORIZONTAL);
     m_static_name->SetBackgroundColour(wxColour(248, 248, 248));
-    m_static_name->SetFont(Label::Head_18);
+    m_static_name->SetFont(Label::Head_16);
     m_static_name->SetMinSize(wxSize(FromDIP(100), -1));
     m_static_name->SetMaxSize(wxSize(FromDIP(100), -1));
 
@@ -370,14 +370,14 @@ FanControlNew::FanControlNew(wxWindow *parent, const AirDuctData &fan_data, int 
     sizer_control_top->Add(m_static_bitmap_fan, 0, wxLEFT | wxTOP, FromDIP(8));
     sizer_control_top->Add(m_static_name, 0, wxLEFT | wxTOP, FromDIP(5));
     sizer_control_top->Add(0, 0, 1, wxEXPAND, 0);
-    sizer_control_top->Add(m_switch_button, 0, wxALIGN_RIGHT | wxRIGHT | wxTOP, FromDIP(10));
+    sizer_control_top->Add(m_switch_button, 0, wxALIGN_RIGHT | wxRIGHT | wxTOP, FromDIP(5));
 
     sizer_control->Add(sizer_control_top, 0, wxEXPAND, 0);
 
     m_static_status_name = new wxStaticText(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxALIGN_CENTER_HORIZONTAL);
     m_static_status_name->SetForegroundColour(wxColour("#00AE42"));
     m_static_status_name->SetBackgroundColour(wxColour(248, 248, 248));
-    m_static_status_name->SetFont(Label::Head_18);
+    m_static_status_name->SetFont(Label::Head_16);
     m_static_status_name->SetMinSize(wxSize(FromDIP(100), -1));
     m_static_status_name->SetMaxSize(wxSize(FromDIP(100), -1));
     m_fan_operate = new FanOperate(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
@@ -403,10 +403,10 @@ FanControlNew::FanControlNew(wxWindow *parent, const AirDuctData &fan_data, int 
         command_control_fan();
     });
 
-    m_sizer_control_bottom->Add(m_static_status_name, 0, wxALL, FromDIP(10));
-    m_sizer_control_bottom->Add(m_fan_operate, 0, wxALL, FromDIP(10));
+    m_sizer_control_bottom->Add(m_static_status_name, 0, wxLEFT | wxALIGN_CENTER, FromDIP(30));
+    m_sizer_control_bottom->Add(m_fan_operate, 0, wxALL, FromDIP(5));
 
-    sizer_control->Add(m_sizer_control_bottom, 0, wxALL, 0);
+    sizer_control->Add(m_sizer_control_bottom, 0, wxALL | wxEXPAND, 0);
     m_sizer_main->Add(sizer_control, 0, wxALIGN_CENTER, 0);
     update_mode();
 
@@ -554,7 +554,24 @@ void FanControlNew::set_machine_obj(MachineObject* obj)
 
 void FanControlNew::set_name(wxString name)
 {
+    if (name.Contains('(') && name.Contains(')'))
+    {
+        wxClientDC dc(m_static_name);
+        dc.SetFont(m_static_name->GetFont());
+        if (dc.GetTextExtent(name).GetWidth() > m_static_name->GetSize().GetWidth())
+        {
+            const wxString& name_without_brackets = name.BeforeFirst('(');
+            const wxString& bracket_content = name.Right(name.Length() - name_without_brackets.Length());
+            const wxString& content = name_without_brackets + "\n" + bracket_content;
+            m_static_name->SetLabelText(content);
+
+            Layout();
+            return;
+        }
+    }
+
     m_static_name->SetLabelText(name);
+    Layout();
 }
 
 void FanControlNew::set_fan_speed(int g)
@@ -692,8 +709,6 @@ void FanControlPopupNew::CreateDuct()
         for (const auto& part : m_data.parts)
         {
             auto part_id    = part.id;
-            auto part_func  = part.func;
-            auto part_name  = fan_func_name[AIR_FUN(part_id)];
             auto part_state = part.state;
 
             auto it = m_fan_control_list.find(part_id);
@@ -731,7 +746,7 @@ void FanControlPopupNew::UpdateParts()
     for (const auto& part : m_data.parts) {
 
         auto part_id = part.id;
-        auto part_name = fan_func_name[AIR_FUN(part_id)];
+        auto part_name = get_fan_func_name(m_data.curren_mode, m_data.m_sub_mode, AIR_FUN(part_id));
 
         auto fan_control = m_fan_control_list[part_id];
         if (!fan_control)
@@ -766,7 +781,7 @@ void FanControlPopupNew::UpdatePartSubMode()
     if (AIR_DUCT(m_data.curren_mode) == AIR_DUCT::AIR_DUCT_COOLING_FILT && m_data.IsSupportCoolingFilter()) {
         if (!m_cooling_filter_switch_panel) {
             m_cooling_filter_switch_panel = new FanControlNewSwitchPanel(m_sub_mode_panel, _L("Filter"), _L("Enabling filtration redirects the right fan to filter gas, which may reduce cooling performance."));
-            m_cooling_filter_switch_panel->Bind(EVT_FANCTRL_SWITCH, [this] (wxCommandEvent& evt) 
+            m_cooling_filter_switch_panel->Bind(EVT_FANCTRL_SWITCH, [this] (wxCommandEvent& evt)
                 {
                   if (m_obj && m_obj->is_in_printing()) {
                       MessageDialog msg_wingow(nullptr, _L("Enabling filtration during printing may reduce cooling and affect print qulity. Please choose carefully"), "", wxICON_WARNING | wxCANCEL | wxOK);
@@ -774,7 +789,7 @@ void FanControlPopupNew::UpdatePartSubMode()
                       if (msg_wingow.ShowModal() != wxID_OK) { return; }
                   }
 
-                  int submode = m_cooling_filter_switch_panel->IsSwitchOn() ? 0 : 1;
+                  int submode = m_cooling_filter_switch_panel->IsSwitchOn() ? 1 : 0;
                   command_control_air_duct(m_data.curren_mode, submode);
                 });
 
@@ -827,8 +842,6 @@ void FanControlPopupNew::update_fan_data(const AirDuctData &data)
     m_data = data;
     for (const auto& part : m_data.parts) {
         auto part_id    = part.id;
-        auto part_func  = part.func;
-        auto part_name  = fan_func_name[AIR_FUN(part_id)];
         auto part_state = part.state;
 
         auto it = m_fan_control_list.find(part_id);
@@ -845,9 +858,6 @@ void FanControlPopupNew::update_fan_data(AIR_FUN id, int speed)
 {
     for (auto& part : m_data.parts) {
         auto part_id    = part.id;
-        auto part_func  = part.func;
-        auto part_name  = fan_func_name[AIR_FUN(part_id)];
-
         if (id == part_id) {
             part.state = speed;
             auto it = m_fan_control_list.find(part_id);
@@ -886,6 +896,10 @@ void FanControlPopupNew::on_left_down(wxMouseEvent& evt)
 
         fan->on_left_down(evt);
     }
+
+    Layout();
+    Fit();
+    Refresh();
 
     evt.Skip();
 }
@@ -963,6 +977,10 @@ void FanControlPopupNew::on_mode_changed(const wxMouseEvent &event)
             btn_iter.second->setSelected(false);
         }
     }
+
+    Layout();
+    Fit();
+    Refresh();
 }
 
 void FanControlPopupNew::on_fan_changed(const wxCommandEvent &event)
@@ -978,14 +996,6 @@ void FanControlPopupNew::init_names(MachineObject* obj) {
     radio_btn_name[AIR_DUCT::AIR_DUCT_EXHAUST] = _L("Exhaust");
     radio_btn_name[AIR_DUCT::AIR_DUCT_FULL_COOLING] = _L("Full Cooling");
     radio_btn_name[AIR_DUCT::AIR_DUCT_INIT] = L("Init");
-
-    fan_func_name[AIR_FUN::FAN_HEAT_BREAK_0_IDX] = _L("Hotend");
-    fan_func_name[AIR_FUN::FAN_COOLING_0_AIRDOOR] = _L("Parts");
-    fan_func_name[AIR_FUN::FAN_REMOTE_COOLING_0_IDX] = _L("Aux");
-    fan_func_name[AIR_FUN::FAN_CHAMBER_0_IDX] = _L("Exhaust");
-    fan_func_name[AIR_FUN::FAN_HEAT_BREAK_1_IDX] = _L("Nozzle1");
-    fan_func_name[AIR_FUN::FAN_MC_BOARD_0_IDX] = _L("MC Board");
-    fan_func_name[AIR_FUN::FAN_INNNER_LOOP_FAN_0_IDX] = _L("Heat");
 
     air_door_func_name[AIR_DOOR::AIR_DOOR_FUNC_CHAMBER] = _L("Chamber");
     air_door_func_name[AIR_DOOR::AIR_DOOR_FUNC_INNERLOOP] = _L("Innerloop");
@@ -1005,17 +1015,40 @@ void FanControlPopupNew::init_names(MachineObject* obj) {
         const std::string& special_cooling_text = DevPrinterConfigUtil::get_fan_text(obj->printer_type, "special_cooling_text");
         if (!special_cooling_text.empty()) {
             L("Cooling mode is suitable for printing PLA/PETG/TPU materials."); //some potential text, add i18n flags
-            label_text[AIR_DUCT::AIR_DUCT_COOLING_FILT] = special_cooling_text;
-        }
-
-        const std::string& special_func_aux_text = DevPrinterConfigUtil::get_fan_text(obj->printer_type, "special_func_aux_text");
-        if (!special_func_aux_text.empty()) {
-            L_CONTEXT("Right", "air_duct");
-            fan_func_name[AIR_FUN::FAN_REMOTE_COOLING_0_IDX] = _CTX(special_func_aux_text, "air_duct");
+            L("Cooling mode is suitable for printing PLA/PETG/TPU materials and filters the chamber air.");
+            label_text[AIR_DUCT::AIR_DUCT_COOLING_FILT] = _L(special_cooling_text);
         }
     }
 }
 
+wxString FanControlPopupNew::get_fan_func_name(int mode, int submode, AIR_FUN func) const
+{
+    if (m_obj)
+    {
+        const std::string& func_text = DevPrinterConfigUtil::get_fan_text(m_obj->printer_type, mode, (int)func, submode);
+        if (!func_text.empty())
+        {
+            L_CONTEXT("Right(Aux)", "air_duct");
+            L_CONTEXT("Right(Filter)", "air_duct");
+            L_CONTEXT("Left(Aux)", "air_duct");
+            return _CTX(func_text, "air_duct");
+        }
+    }
+
+    static std::map<AIR_FUN, wxString> s_fan_func_name
+    {
+        { AIR_FUN::FAN_HEAT_BREAK_0_IDX,     _L("Hotend") },
+        { AIR_FUN::FAN_COOLING_0_AIRDOOR,     _L("Parts") },
+        { AIR_FUN::FAN_REMOTE_COOLING_0_IDX,  _L("Aux") },
+        { AIR_FUN::FAN_CHAMBER_0_IDX,         _L("Exhaust") },
+        { AIR_FUN::FAN_HEAT_BREAK_1_IDX,      _L("Nozzle1") },
+        { AIR_FUN::FAN_MC_BOARD_0_IDX,        _L("MC Board") },
+        { AIR_FUN::FAN_INNNER_LOOP_FAN_0_IDX, _L("Heat") },
+    };
+
+    auto iter = s_fan_func_name.find(func);
+    return (iter != s_fan_func_name.end()) ? iter->second : wxString::Format(_L("Fan"));
+}
 
 wxDEFINE_EVENT(EVT_FANCTRL_SWITCH, wxCommandEvent);
 FanControlNewSwitchPanel::FanControlNewSwitchPanel(wxWindow* parent, const wxString& title, const wxString& tips, bool on)
@@ -1036,8 +1069,7 @@ FanControlNewSwitchPanel::FanControlNewSwitchPanel(wxWindow* parent, const wxStr
 
     wxSizer* m_label_sizer = new wxBoxSizer(wxHORIZONTAL);
     m_label_sizer->Add(label, 0, wxALIGN_LEFT, 0);
-    m_label_sizer->AddSpacer(FromDIP(10));
-    m_label_sizer->Add(0, 1, wxEXPAND, FromDIP(10));
+    m_label_sizer->AddStretchSpacer(1);
     m_label_sizer->Add(m_switch_btn, 0, wxALIGN_RIGHT, 0);
 
     Label* tips_label = new Label(this);
@@ -1046,12 +1078,14 @@ FanControlNewSwitchPanel::FanControlNewSwitchPanel(wxWindow* parent, const wxStr
     tips_label->Wrap(FromDIP(400));
 
     wxSizer* m_sizer_main = new wxBoxSizer(wxVERTICAL);
-    m_sizer_main->Add(m_label_sizer, 0, wxALL | wxALIGN_LEFT, FromDIP(5));
+    m_sizer_main->Add(m_label_sizer, 0, wxALL | wxEXPAND, FromDIP(5));
     m_sizer_main->Add(tips_label, 0, wxALL | wxALIGN_LEFT, FromDIP(5));
     SetSizer(m_sizer_main);
 
     SetBackgroundColour(wxColour(248, 248, 248));
     Layout();
+
+    wxGetApp().UpdateDarkUIWin(this);
 }
 
 void FanControlNewSwitchPanel::SetSwitchOn(bool on)

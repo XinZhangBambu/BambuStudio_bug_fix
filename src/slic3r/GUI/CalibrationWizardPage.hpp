@@ -28,6 +28,13 @@ namespace Slic3r { namespace GUI {
 
 class CalibrationWizard;
 
+/* note: it's not extruder id !!! */
+enum ExtruderRole {
+    SINGLE_EXTRUDER = 0,
+    MAIN_EXTRUDER,
+    DEPUTY_EXTRUDER,
+};
+
 enum class CalibrationStyle : int
 {
     CALI_STYLE_DEFAULT = 0,
@@ -49,6 +56,7 @@ enum CalibrationFilamentMode {
 enum CalibrationMethod {
     CALI_METHOD_MANUAL = 0,
     CALI_METHOD_AUTO,
+    CALI_METHOD_NEW_AUTO,
     CALI_METHOD_NONE,
 };
 
@@ -78,13 +86,14 @@ enum class CaliPageType {
 class FilamentComboBox : public wxPanel
 {
 public:
-    FilamentComboBox(wxWindow* parent, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize);
+    FilamentComboBox(wxWindow* parent, int index, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize);
     ~FilamentComboBox() {};
 
     void set_select_mode(CalibrationFilamentMode mode);
     CalibrationFilamentMode get_select_mode() { return m_mode; }
     void load_tray_from_ams(int id, DynamicPrintConfig& tray);
     void update_from_preset();
+    int get_index() { return m_index; }
     int get_tray_id() { return m_tray_id; }
     bool is_bbl_filament() { return m_is_bbl_filamnet; }
     std::string get_tray_name() { return m_tray_name; }
@@ -101,7 +110,16 @@ public:
     void ShowPanel();
     void HidePanel();
 
+    void UpdateNozzleCombo(const std::vector<std::pair<wxString, int>>& nozzle_list);
+    int  GetNozzleIdCode() const;
+    void ShowNozzleCombo();
+    void HideNozzleCombo();
+
+    void SetExtuderRole(const ExtruderRole& role){ m_extuder_role = role; }
+    ExtruderRole GetExtuderRole() const { return m_extuder_role; }
+
 protected:
+    int m_index{0};
     int m_tray_id { -1 };
     std::string m_tray_name;
     bool m_is_bbl_filamnet{ false };
@@ -109,7 +127,11 @@ protected:
     CheckBox* m_checkBox{ nullptr };
     wxRadioButton* m_radioBox{ nullptr };
     CalibrateFilamentComboBox* m_comboBox{ nullptr };
+    wxStaticBitmap* m_nozzle_bmp{ nullptr };
+    ComboBox* m_nozzle_combo{ nullptr };
+
     CalibrationFilamentMode m_mode { CalibrationFilamentMode::CALI_MODEL_SINGLE };
+    ExtruderRole m_extuder_role{ExtruderRole::SINGLE_EXTRUDER};
 };
 
 typedef std::vector<FilamentComboBox*> FilamentComboBoxList;

@@ -15,6 +15,7 @@ enum class CalibMode : int {
     Calib_PA_Line,
     Calib_PA_Pattern,
     Calib_PA_Tower,
+    Calib_Auto_PA_Line,
     Calib_Flow_Rate,
     Calib_Temp_Tower,
     Calib_Vol_speed_Tower,
@@ -76,7 +77,10 @@ public:
     int         tray_id;
     int         extruder_id;
     NozzleVolumeType nozzle_volume_type;
+    BedType     bed_type;
     float       nozzle_diameter;
+    int         nozzle_pos_id{-1};
+    std::string nozzle_sn;
     std::string filament_id;
     std::string setting_id;
     std::string name;
@@ -87,6 +91,8 @@ public:
         this->extruder_id     = other.extruder_id;
         this->nozzle_volume_type = other.nozzle_volume_type;
         this->nozzle_diameter = other.nozzle_diameter;
+        this->nozzle_pos_id   = other.nozzle_pos_id;
+        this->nozzle_sn       = other.nozzle_sn;
         this->filament_id     = other.filament_id;
         this->setting_id      = other.setting_id;
         this->name            = other.name;
@@ -117,7 +123,9 @@ public:
     int         ams_id = 0;
     int         slot_id = 0;
     int         cali_idx = -1;
+    int         nozzle_pos_id = -1; //-1 means no nozzle pos
     float       nozzle_diameter;
+    std::string nozzle_sn;
     std::string filament_id;
     std::string setting_id;
     std::string name;
@@ -134,7 +142,9 @@ struct PACalibIndexInfo
     int         ams_id = 0;
     int         slot_id = 0;
     int         cali_idx = -1; // -1 means default
+    int         nozzle_pos_id = -1; //-1 means no nozzle pos
     float       nozzle_diameter;
+    std::string nozzle_sn;
     std::string filament_id;
 };
 
@@ -142,7 +152,9 @@ struct PACalibExtruderInfo
 {
     int              extruder_id = 0;
     NozzleVolumeType nozzle_volume_type;
+    int              nozzle_pos_id = -1; //-1 means no nozzle pos
     float            nozzle_diameter;
+    std::string      nozzle_sn;
     std::string      filament_id = "";
     bool             use_extruder_id{true};
     bool             use_nozzle_volume_type{true};
