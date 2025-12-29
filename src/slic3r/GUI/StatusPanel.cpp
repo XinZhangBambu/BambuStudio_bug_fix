@@ -2199,17 +2199,10 @@ void StatusBasePanel::jump_to_Rack()
 
 void StatusBasePanel::on_ams_rack_switch(wxCommandEvent &e)
 {
-    if (!m_ams_control_box->IsShown() && e.GetInt() == 1) {
-        m_ams_control_box->Show(e.GetInt() == 1);
-        m_panel_nozzle_rack->Show(e.GetInt() == 0);
-        Layout();
-    } else if (!m_panel_nozzle_rack->IsShown() && e.GetInt() == 0) {
-        m_ams_control_box->Show(e.GetInt() == 1);
-        m_panel_nozzle_rack->Show(e.GetInt() == 0);
-        Layout();
-    }
-
-    e.Skip();
+    BOOST_LOG_TRIVIAL(info) << "on_ams_rack_switch: " << e.GetInt();
+    m_ams_control_box->Show(e.GetInt() == 1);
+    m_panel_nozzle_rack->Show(e.GetInt() == 0);
+    Layout();
 }
 
 void StatusPanel::update_camera_state(MachineObject *obj)
