@@ -51,6 +51,7 @@ SliceInfoPopup::SliceInfoPopup(wxWindow *parent, wxBitmap bmp, BBLSliceInfo *inf
 #ifdef __WINDOWS__
     SetDoubleBuffered(true);
 #endif
+    SetBackgroundColour(*wxWHITE);
     m_panel = new wxScrolledWindow(this, wxID_ANY);
     m_panel->SetBackgroundColour(*wxWHITE);
 

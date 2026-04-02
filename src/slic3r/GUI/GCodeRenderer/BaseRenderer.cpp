@@ -683,9 +683,12 @@ namespace Slic3r
                         return;
                 }
                 ImGuiWrapper& imgui = *wxGetApp().imgui();
+                const bool is_dark = wxGetApp().dark_mode();
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0, 10.0 * m_scale));
-                ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, is_dark ? ImGuiWrapper::COL_WINDOW_BG_DARK : ImGuiWrapper::COL_WINDOW_BG);
+                ImGui::PushStyleColor(ImGuiCol_Text, is_dark ? ImVec4(1.0f, 1.0f, 1.0f, 0.88f) : ImVec4(50 / 255.0f, 58 / 255.0f, 61 / 255.0f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Separator, is_dark ? ImVec4(1.0f, 1.0f, 1.0f, 0.6f) : ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.00f, 0.68f, 0.26f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.00f, 0.68f, 0.26f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(0.42f, 0.42f, 0.42f, 1.00f));
@@ -1062,7 +1065,7 @@ namespace Slic3r
                     }
                 }
                 ImGui::End();
-                ImGui::PopStyleColor(6);
+                ImGui::PopStyleColor(8);
                 ImGui::PopStyleVar(3);
                 return;
             }
@@ -1326,17 +1329,19 @@ namespace Slic3r
                     return;
                 const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
                 ImGuiWrapper& imgui = *wxGetApp().imgui();
+                const bool is_dark = wxGetApp().dark_mode();
                 //BBS: GUI refactor: move to the right
                 imgui.set_next_window_pos(float(canvas_width - right_margin * m_scale), 0.0f, ImGuiCond_Always, 1.0f, 0.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0, 0.0));
-                ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, is_dark ? ImGuiWrapper::COL_WINDOW_BG_DARK : ImGuiWrapper::COL_WINDOW_BG);
+                ImGui::PushStyleColor(ImGuiCol_Text, is_dark ? ImVec4(1.0f, 1.0f, 1.0f, 0.88f) : ImVec4(50 / 255.0f, 58 / 255.0f, 61 / 255.0f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Separator, is_dark ? ImVec4(1.0f, 1.0f, 1.0f, 0.6f) : ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.00f, 0.68f, 0.26f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.00f, 0.68f, 0.26f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(0.42f, 0.42f, 0.42f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(0.93f, 0.93f, 0.93f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ImVec4(0.93f, 0.93f, 0.93f, 1.00f));
-                //ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(1.f, 1.f, 1.f, 1.0f));
                 ImGui::PushStyleColor(ImGuiCol_Border, { 1, 0, 0, 0 });
                 ImGui::SetNextWindowBgAlpha(0.8f);
                 const float max_height = 0.75f * static_cast<float>(cnv_size.get_height());
@@ -1606,7 +1611,7 @@ namespace Slic3r
                 if (m_fold) {
                     legend_height = ImGui::GetStyle().WindowPadding.y + ImGui::GetFrameHeight() + window_padding * 2.5;
                     imgui.end();
-                    ImGui::PopStyleColor(7);
+                    ImGui::PopStyleColor(9);
                     ImGui::PopStyleVar(2);
                     return;
                 }
@@ -2551,7 +2556,7 @@ namespace Slic3r
                     render_legend_color_arr_recommen(window_padding);
                 legend_height = ImGui::GetCurrentWindow()->Size.y;
                 imgui.end();
-                ImGui::PopStyleColor(7);
+                ImGui::PopStyleColor(9);
                 ImGui::PopStyleVar(2);
             }
 
