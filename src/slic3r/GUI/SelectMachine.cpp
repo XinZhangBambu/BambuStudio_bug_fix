@@ -170,8 +170,8 @@ SelectMachineDialog::SelectMachineDialog(Plater *plater)
     m_scroll_area              = new wxScrolledWindow(this);
     m_scroll_area->SetScrollRate(0, 20);
     m_scroll_area->SetBackgroundColour(m_colour_def_color);
-    m_scroll_area->SetMinSize(wxSize(FromDIP(700), FromDIP(600)));
-    m_scroll_area->SetMaxSize(wxSize(FromDIP(700), FromDIP(600)));
+    m_scroll_area->SetMinSize(wxSize(FromDIP(700), FromDIP(550)));
+    m_scroll_area->SetMaxSize(wxSize(FromDIP(700), FromDIP(550)));
 
     m_line_top = new wxPanel(m_scroll_area, wxID_ANY, wxDefaultPosition, wxSize(-1, 1), wxTAB_TRAVERSAL);
     m_line_top->SetBackgroundColour(wxColour(166, 169, 170));
